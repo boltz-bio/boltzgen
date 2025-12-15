@@ -1,5 +1,4 @@
 import re
-import string
 from collections import defaultdict
 
 import gemmi
@@ -40,24 +39,14 @@ def to_mmcif(
     chain_to_entity_id = {}
     sequence_to_entity_id = {}
     entity_counter = 1
-    chain_names = [re.sub(r"\d+", "", c["name"]) for c in structure.chains]
-    chain_id_pool = list(reversed(string.ascii_uppercase)) + list(
-        reversed(string.digits)
-    )
-    used_names = []
     old_to_new_chainid = {}
     for chain in structure.chains:
-        old_chainid = chain["name"].item()
-
-        new_chainid = re.sub(r"\d+", "", old_chainid)
-        if new_chainid in used_names:
-            # Find next unused chain ID from the pool
-            for candidate in chain_id_pool:
-                if candidate not in chain_names and candidate not in used_names:
-                    new_chainid = candidate
-                    break
-        old_to_new_chainid[old_chainid] = new_chainid
-        used_names.append(new_chainid)
+        chain_id = chain["name"].item()
+        # We now guarantee upstream that chain ids are already valid mmCIF
+        # asym ids: 1–5 upper-case letters (A–Z) with no digits or symbols.
+        # Use them directly and keep an identity mapping for compatibility
+        # with downstream helpers that still expect `old_to_new_chainid`.
+        old_to_new_chainid[chain_id] = chain_id
 
         residues = structure.residues[
             chain["res_idx"] : chain["res_idx"] + chain["res_num"]
@@ -87,12 +76,11 @@ def to_mmcif(
             gemmi_struct.entities.append(entity)
             entity_counter += 1
 
-        chain_to_entity_id[new_chainid] = sequence_to_entity_id[sequence]
+        chain_to_entity_id[chain_id] = sequence_to_entity_id[sequence]
 
     label_seq_dict = defaultdict(list)
     for chain in structure.chains:
-        old_chainid = chain["name"].item()
-        chain_id = old_to_new_chainid[old_chainid]
+        chain_id = chain["name"].item()
 
         gemmi_chain = gemmi.Chain(chain_id)
 
@@ -228,9 +216,10 @@ def to_mmcif(
         if entity_id != curr_entity_id:
             curr_entity_id = entity_id
             curr_resid = 0
-        eps_loop[i, entity_poly_seq_label_id_idx] = str(label_seq_dict[entity_id][curr_resid])
+        eps_loop[i, entity_poly_seq_label_id_idx] = str(
+            label_seq_dict[entity_id][curr_resid]
+        )
         curr_resid += 1
-    
 
     struct_asym_loop = block.init_loop("_struct_asym.", ["id", "entity_id"])
     for chain_id, entity_id in sorted(chain_to_entity_id.items()):
@@ -263,23 +252,24 @@ def add_boltzgen_metadata(structure, block, old_to_new_chainid):
     ]
     custom_loop = block.init_loop("_boltzgen_metadata.", cols)
 
+    # Currently we do not have direct access to the design mask at this point,
+    # so we emit a trivial mask (all zeros) while still providing a stable
+    # mapping between mmCIF residue indices and the physical residue indices
+    # in the Boltz structure.
     for chain in structure.chains:
         chain_id = old_to_new_chainid[chain["name"].item()]
         residues = structure.residues[
             chain["res_idx"] : chain["res_idx"] + chain["res_num"]
         ]
-        for res_idx, pysical_idx in enumerate(residues, 1):
-            seq_id = res_idx + 1
-            if not res["is_present"]:
-                continue
-            mon_id = res["name"].item()
-            score = res.get("custom_score", 0.0)  # Example access to your metadata
+        for seq_idx, res in enumerate(residues, 1):
+            phys_idx = res["res_idx"].item()
+            design_mask = "0"
             custom_loop.add_row(
                 [
                     chain_id,
-                    str(seq_id),
-                    f"{score:.3f}",
-                    mon_id,
+                    str(seq_idx),
+                    str(phys_idx),
+                    design_mask,
                 ]
             )
 

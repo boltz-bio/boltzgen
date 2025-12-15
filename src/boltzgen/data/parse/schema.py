@@ -1180,6 +1180,10 @@ class YamlDesignParser:
 
         # Convert parsed chains to tables
 
+        # Track globally requested output chain ids (from YAML), to enforce
+        # uniqueness across *all* entities (file and non-file).
+        global_output_ids: set[str] = set()
+
         while True:
             data = Structure.empty_protein(0)
 
@@ -1233,6 +1237,29 @@ class YamlDesignParser:
                     extra_mols.update(new_extra_mols)
                     res_bind_type = np.concatenate([res_bind_type, new_res_bind_type])
                     ss_type = np.concatenate([ss_type, new_ss_type])
+                    # For non-file entities, the user-facing "output" id is
+                    # simply the chain id from the YAML. Enforce that these are
+                    # globally unique across all entities.
+                    ids_field = item[entity_type]["id"]
+                    ids_list = [ids_field] if isinstance(ids_field, str) else ids_field
+                    for out_id in ids_list:
+                        raw_out_id = out_id
+                        out_id = str(out_id).upper()
+                        if len(out_id) > 5 or not out_id.isalpha():
+                            msg = (
+                                f"Output chain id '{raw_out_id}' for non-file entity "
+                                f"(normalized to '{out_id}') is invalid. Output ids "
+                                "must be 1–5 upper-case letters (A–Z) with no "
+                                "digits or symbols."
+                            )
+                            raise ValueError(msg)
+                        if out_id in global_output_ids:
+                            msg = (
+                                "Output chain ids must be unique across all entities, "
+                                f"but '{out_id}' was specified more than once."
+                            )
+                            raise ValueError(msg)
+                        global_output_ids.add(out_id)
                     for asym_id, (chain_name, chain) in enumerate(
                         parsed_chains.items()
                     ):
@@ -1409,6 +1436,7 @@ class YamlDesignParser:
                         new_extra_mols,
                         file_msa_flag,
                         ligand_id,
+                        file_chain_to_output,
                     ) = self.parse_file(item, mols, mol_dir, ligand_id, base_file_path)
                     if fuse_info["fuse"]:
                         if fuse_info["target_id"] in total_renaming.keys():
@@ -1443,6 +1471,16 @@ class YamlDesignParser:
                             )
                         new_chain_to_msa[renamed_id] = msa
                     chain_to_msa.update(new_chain_to_msa)
+                    # Enforce global uniqueness of user-specified output ids for
+                    # file entities as well.
+                    for _, out_id in file_chain_to_output.items():
+                        if out_id in global_output_ids:
+                            msg = (
+                                "Output chain ids must be unique across all entities, "
+                                f"but '{out_id}' was specified more than once."
+                            )
+                            raise ValueError(msg)
+                        global_output_ids.add(out_id)
                     # Update chain_to_msa dictionary. Set defaults given by file_msa_flag for proteins. Insert -1 (no msa) for {dna, rna, ligand}.
                     for chain in data.chains:
                         chain_id = chain["name"].item()
@@ -1596,6 +1634,11 @@ class YamlDesignParser:
         fuse = file.get("fuse", None)
         binding_types = file.get("binding_types", None)
         secondary_structure = file.get("secondary_structure", None)
+        # Explicit mapping from original chain ids in the structure file to
+        # user-facing output chain ids. This is required for file entities and
+        # is validated below to ensure that (a) all included chains are mapped
+        # and (b) output ids are unique.
+        chain_id_mapping = file.get("chain_id_mapping", None)
 
         if isinstance(include, list):
             for list_element in include:
@@ -1648,6 +1691,102 @@ class YamlDesignParser:
 
         structure = parsed.data
         num_res = len(structure.residues)
+
+        # ------------------------------------------------------------------
+        # Validate and normalize chain_id_mapping for this file entity
+        # ------------------------------------------------------------------
+        if chain_id_mapping is None:
+            msg = (
+                f"File entity with path '{path}' must specify 'chain_id_mapping', "
+                "a mapping from original chain ids in the structure file to "
+                "globally unique output chain ids."
+            )
+            raise ValueError(msg)
+        if not isinstance(chain_id_mapping, Mapping):
+            msg = (
+                f"'chain_id_mapping' for file with path '{path}' must be a mapping "
+                "from original chain ids (e.g. 'A') to output chain ids (strings)."
+            )
+            raise ValueError(msg)
+        # Normalize keys and values to strings (values become upper-case A-Z)
+        normalized_mapping: dict[str, str] = {}
+        for k, v in chain_id_mapping.items():
+            if v is None or v == "":
+                msg = (
+                    f"'chain_id_mapping' for file '{path}' contains an empty "
+                    f"output id for original chain '{k}'."
+                )
+                raise ValueError(msg)
+            norm_k = str(k)
+            norm_v = str(v).upper()
+            if len(norm_v) > 5 or not norm_v.isalpha():
+                msg = (
+                    f"'chain_id_mapping' for file '{path}' has invalid output id "
+                    f"'{v}' (normalized to '{norm_v}'). Output ids must be 1–5 "
+                    "upper-case letters (A–Z) with no digits or symbols."
+                )
+                raise ValueError(msg)
+            if norm_k in normalized_mapping and normalized_mapping[norm_k] != norm_v:
+                msg = (
+                    f"'chain_id_mapping' for file '{path}' specifies multiple "
+                    f"output ids for the same original chain '{norm_k}'."
+                )
+                raise ValueError(msg)
+            normalized_mapping[norm_k] = norm_v
+        chain_id_mapping = normalized_mapping
+
+        # Determine which chains are included by this file specification.
+        all_chain_ids = {str(c) for c in structure.chains["name"]}
+        if isinstance(include, str):
+            if include == "all":
+                included_chain_ids = all_chain_ids
+            else:
+                msg = "Include has to be a list or 'all' to include everything in the file."
+                raise ValueError(msg)
+        elif isinstance(include, list):
+            included_chain_ids = set()
+            for list_element in include:
+                chain = list_element["chain"]
+                if "id" not in chain:
+                    msg = (
+                        "Misspecified chain in include with missing 'id' for file "
+                        f"with path {path}."
+                    )
+                    raise ValueError(msg)
+                chain_id = str(chain["id"])
+                included_chain_ids.add(chain_id)
+        else:
+            msg = "Include entry has to be a list of chains or 'all'."
+            raise ValueError(msg)
+
+        # Ensure that every included chain has a mapping entry.
+        missing = included_chain_ids.difference(chain_id_mapping.keys())
+        if missing:
+            msg = (
+                f"'chain_id_mapping' for file '{path}' is missing entries for the "
+                f"following included chains: {sorted(missing)}."
+            )
+            raise ValueError(msg)
+
+        # Ensure that mapping does not reference chains that are not present in the file.
+        unknown = chain_id_mapping.keys() - all_chain_ids
+        if unknown:
+            msg = (
+                f"'chain_id_mapping' for file '{path}' refers to chains that do not "
+                f"exist in the structure: {sorted(unknown)}."
+            )
+            raise ValueError(msg)
+
+        # Ensure that output ids are unique *within* this file entity; global
+        # uniqueness is enforced later across all entities.
+        outputs = list(chain_id_mapping.values())
+        dup_local = {cid for cid in outputs if outputs.count(cid) > 1}
+        if dup_local:
+            msg = (
+                f"'chain_id_mapping' for file '{path}' contains duplicate output "
+                f"chain ids: {sorted(dup_local)}. Output chain ids must be unique."
+            )
+            raise ValueError(msg)
 
         # Construct include mask from include entries
         file_chain_to_msa = {}
@@ -2115,6 +2254,22 @@ class YamlDesignParser:
         else:
             fuse_info["fuse"] = False
 
+        # Override chain names in the returned structure with the user-specified
+        # output ids. Internally in this function we *only* used the original
+        # CIF chain names (from the parsed structure) for all include/exclude
+        # and annotation logic; at this point we can safely replace them.
+        file_chain_to_output: dict[str, str] = {}
+        for idx, chain in enumerate(new_structure.chains):
+            original_name = str(chain["name"].item())
+            if original_name not in chain_id_mapping:
+                # This can happen if a chain was present in the file but fully
+                # excluded by the include/mask logic; in that case it will not
+                # be present in `new_structure.chains`.
+                continue
+            output_id = chain_id_mapping[original_name]
+            new_structure.chains[idx]["name"] = output_id
+            file_chain_to_output[original_name] = output_id
+
         return (
             new_structure,
             new_groups,
@@ -2126,4 +2281,5 @@ class YamlDesignParser:
             extra_mols,
             file_msa_flag,
             ligand_id,
+            file_chain_to_output,
         )
