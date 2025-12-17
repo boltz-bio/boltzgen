@@ -7,6 +7,8 @@ import random
 import re
 from typing import Optional
 from copy import deepcopy
+from tempfile import TemporaryDirectory
+import time
 
 import numpy as np
 from rdkit import Chem, rdBase
@@ -15,6 +17,7 @@ from rdkit.Chem.rdchem import Conformer, Mol
 from rdkit.Chem.rdMolDescriptors import CalcNumHeavyAtoms
 from scipy.spatial.distance import cdist
 import yaml
+import requests
 
 from boltzgen.data import const
 from boltzgen.data.mol import load_molecules
@@ -159,6 +162,72 @@ class Alignment:
 ####################################################################################################
 # HELPERS
 ####################################################################################################
+
+
+def check_is_url(url: str) -> bool:
+    """Check if a string is a URL (http or https)."""
+    return url.startswith(("http://", "https://"))
+
+
+def download_from_url(
+    url: str,
+    tmp_dir: str,
+    max_retries: int = 3,
+    backoff_factor: float = 1.0,
+) -> Path:
+    """Download a file from a URL to a temporary directory.
+
+    Supports HTTP(S) URLs with retry policy and exponential backoff.
+
+    Parameters
+    ----------
+    url : str
+        The URL to download from (http:// or https://).
+    tmp_dir : str
+        The temporary directory to save the file to.
+    max_retries : int
+        Maximum number of retry attempts (default: 3).
+    backoff_factor : float
+        Factor for exponential backoff between retries (default: 1.0).
+        Wait time is backoff_factor * (2 ** attempt) seconds.
+
+    Returns
+    -------
+    Path
+        The path to the downloaded file.
+
+    Raises
+    ------
+    Exception
+        The last exception encountered after all retries are exhausted.
+    """
+    assert check_is_url(url), "URL must be a valid HTTP(S) URL."
+
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            filename = Path(url).name
+            local_path = Path(tmp_dir) / filename
+            with local_path.open("wb") as f:
+                f.write(response.content)
+            return local_path
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                wait_time = backoff_factor * (2**attempt)
+                print(
+                    f"Download attempt {attempt + 1} failed for {url}: {e}. "
+                    f"Retrying in {wait_time:.1f}s..."
+                )
+                time.sleep(wait_time)
+            else:
+                msg = f"Download failed after {max_retries + 1} attempts for {url}: {e}"
+                print(msg)
+
+    raise last_exception
 
 
 def compute_3d_conformer(mol: Mol, version: str = "v3") -> bool:
@@ -1617,7 +1686,14 @@ class YamlDesignParser:
                 base_file_path = resolved_path.parent
 
         # Extract values of file
-        path = (base_file_path / Path(file["path"])).resolve()
+        file_path_value = file["path"]
+        if isinstance(file_path_value, str) and check_is_url(file_path_value):
+            is_url = True
+            path = file_path_value  # URL path, use as-is
+        else:
+            path = (base_file_path / Path(file_path_value)).resolve()
+            is_url = False
+
         use_assembly = file.get("use_assembly", False)  # dont use assembly by default
         include = file.get("include", "all")  # include all by default
         include_proximity = file.get("include_proximity", None)
@@ -1667,13 +1743,31 @@ class YamlDesignParser:
                     ligand_id += 1
 
         # Get structure
-        cache_key = (path.resolve(), use_assembly)
-        cached = self._struct_cache.get(cache_key)
+        cache_key = (path if is_url else path.resolve(), use_assembly)
 
+        cached = self._struct_cache.get(cache_key)
         if cached is not None:
             parsed = deepcopy(cached)
         else:
-            if path.suffix == ".pdb":
+            # Check if path is a URL
+            if is_url:
+                with TemporaryDirectory() as tmp_dir:
+                    path = download_from_url(path, tmp_dir)
+                    if path.suffix == ".pdb":
+                        parsed = parse_pdb(
+                            path,
+                            mols=mols,
+                            moldir=mol_dir,
+                            use_assembly=use_assembly,
+                        )
+                    else:
+                        parsed = parse_mmcif(
+                            path,
+                            mols=mols,
+                            moldir=mol_dir,
+                            use_assembly=use_assembly,
+                        )
+            elif path.suffix == ".pdb":
                 parsed = parse_pdb(
                     path,
                     mols=mols,
