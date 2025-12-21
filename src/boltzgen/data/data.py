@@ -1244,6 +1244,7 @@ class Structure(NumpySerializable):
     ) -> "Structure":
         return self._from_feat(
             id=feat["id"],
+            chain_name=feat["chain_name"],
             entity_id=feat["entity_id"].cpu(),
             asym_id=feat["asym_id"].cpu(),
             sym_id=feat["sym_id"].cpu(),
@@ -1274,6 +1275,7 @@ class Structure(NumpySerializable):
     def _from_feat(
         self,
         id: str,
+        chain_name: list[str],
         asym_id: torch.Tensor,
         entity_id: torch.Tensor,
         sym_id: torch.Tensor,
@@ -1504,8 +1506,6 @@ class Structure(NumpySerializable):
         total_atoms = 0
         for chain_id in chain_ids:  # np.unique(res_chain_id):
             chain_res_selector = np.where(chain_id == res_chain_id)[0]
-            chain_number = chain_id // 26 + 1
-            chain_letter = chr(65 + chain_id % 26)
             num_atoms = (
                 np.array([res[4] for res in res_data_array[chain_res_selector]])
                 .sum()
@@ -1513,7 +1513,7 @@ class Structure(NumpySerializable):
             )
             chain_data.append(
                 (
-                    chain_letter + str(chain_number),
+                    chain_name[chain_id],
                     res_mol_type[chain_res_selector[0]].item(),
                     res_entity_id[chain_res_selector[0]],
                     res_sym_id[chain_res_selector[0]].item(),

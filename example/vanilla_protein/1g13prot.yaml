@@ -12,3 +12,7 @@ entities:
         - chain:
             id: A
 
+      chain_id_mapping:
+        - chain:
+            id: A
+            output_id: B

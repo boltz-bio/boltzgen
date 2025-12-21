@@ -249,6 +249,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "id",
             "structure_bonds",
             "extra_mols",
+            "chain_name",
         ]:
             if values[0] is not None:
                 # Check if all have the same shape
@@ -1253,6 +1254,7 @@ class TrainingDataModule(pl.LightningDataModule):
                 "structure",
                 "structure_bonds",
                 "extra_mols",
+                "chain_name",
             ]:
                 if hasattr(batch[key], "to"):
                     batch[key] = batch[key].to(device)

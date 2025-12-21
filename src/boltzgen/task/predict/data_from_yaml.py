@@ -41,8 +41,6 @@ class DataConfig:
     skip_offset: int = 0
     diffusion_samples: int = 1
     output_dir: Optional[str] = None
-  
-   
 
 
 @dataclass
@@ -96,6 +94,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "structure_bonds",
             "extra_mols",
             "data_sample_idx",
+            "chain_name",
         ]:
             # Check if all have the same shape
             shape = values[0].shape
@@ -161,18 +160,16 @@ class PredictionDataset(torch.utils.data.Dataset):
         self.extra_features = (
             set(extra_features) if extra_features is not None else set()
         )
-        self.selector = (
-            ProteinSelector(  
-                design_neighborhood_sizes=[2, 4, 6, 8, 10, 12, 14, 16, 18],
-                substructure_neighborhood_sizes=[2, 4, 6, 8, 10, 12, 24],
-                structure_condition_prob=1.0,
-                distance_noise_std=1,
-                run_selection=True,
-                specify_binding_sites=True,
-                ss_condition_prob=0.1,
-                select_all=False,
-                chain_reindexing=False,
-            )
+        self.selector = ProteinSelector(
+            design_neighborhood_sizes=[2, 4, 6, 8, 10, 12, 14, 16, 18],
+            substructure_neighborhood_sizes=[2, 4, 6, 8, 10, 12, 24],
+            structure_condition_prob=1.0,
+            distance_noise_std=1,
+            run_selection=True,
+            specify_binding_sites=True,
+            ss_condition_prob=0.1,
+            select_all=False,
+            chain_reindexing=False,
         )
         self.design = design
         self.compute_affinity = compute_affinity
@@ -200,9 +197,7 @@ class PredictionDataset(torch.utils.data.Dataset):
 
     def get_sample(self, path: Path, sample_id: Optional[str] = None) -> Dict:
         # Get itemn also needs to take a smaple id as input
-        parsed = self.parser.parse_yaml(
-            path, mol_dir=self.moldir, mols=self.mols
-        )
+        parsed = self.parser.parse_yaml(path, mol_dir=self.moldir, mols=self.mols)
         structure = parsed.structure
         design_info = parsed.design_info
 
@@ -340,7 +335,9 @@ class FromYamlDataModule(pl.LightningDataModule):
                         int(m.group(1))
                         for fp in design_dir.iterdir()
                         if fp.suffix in {".cif", ".pdb"}
-                        and not any(s in fp.name for s in ("_native.cif", "_metadata.npz"))
+                        and not any(
+                            s in fp.name for s in ("_native.cif", "_metadata.npz")
+                        )
                         for m in [pattern.search(fp.name)]
                         if m
                     ),
@@ -348,7 +345,7 @@ class FromYamlDataModule(pl.LightningDataModule):
                 )
             n_samples = getattr(cfg, "diffusion_samples", 1)
             cfg.skip_offset = (max_idx // max(n_samples, 1)) + 1 if max_idx >= 0 else 0
-            
+
         self.cfg = cfg
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -440,6 +437,7 @@ class FromYamlDataModule(pl.LightningDataModule):
                 "structure_bonds",
                 "extra_mols",
                 "data_sample_idx",
+                "chain_name",
             ]:
                 batch[key] = batch[key].to(device)
         return batch

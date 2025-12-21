@@ -30,6 +30,7 @@ class BoltzMasker(Module):
         if self.mask:
             new = {}
             new["id"] = feats["id"]
+            new["chain_name"] = feats["chain_name"]
             new["structure_bonds"] = feats["structure_bonds"]
             skip_keys = [
                 "id",

@@ -105,6 +105,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "structure",
             "tokenized",
             "data_sample_idx",
+            "chain_name",
         ]:
             # Check if all have the same shape
             shape = values[0].shape
@@ -843,6 +844,7 @@ class FromGeneratedDataModule(pl.LightningDataModule):
                 "structure",
                 "tokenized",
                 "data_sample_idx",
+                "chain_name",
             ]:
                 batch[key] = batch[key].to(device)
 

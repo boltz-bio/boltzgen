@@ -473,7 +473,6 @@ class Filter(Task):
 
             self.df.loc[mask_fail, "absolute_score"] *= 0.1
 
-
     def sort_df(self):
         rank_df = pd.DataFrame(index=self.df.index)
 

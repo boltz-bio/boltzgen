@@ -2177,7 +2177,12 @@ class Featurizer:
                     )
         token_features.update({"ss_type": ss})
 
+        # Add asym_id to chain name feature
+        chain_names = data.structure.chains["name"]
+        chain_names = [name.item() for name in chain_names]
+
         return {
+            "chain_name": chain_names,
             "structure_bonds": data.structure.bonds,
             **token_features,
             **atom_features,

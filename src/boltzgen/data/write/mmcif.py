@@ -402,8 +402,7 @@ def add_poly_seq_scheme_cols(structure, block, chain_to_entity_id, label_seq_dic
         if chain["mol_type"].item() == const.chain_type_ids["NONPOLYMER"]:
             continue
 
-        chain_name_str = re.sub(r"\d+", "", chain["name"].item())
-        chain_id = chain_name_str
+        chain_id = chain["name"].item()
         entity_id = chain_to_entity_id[chain_id]
 
         residues = structure.residues[

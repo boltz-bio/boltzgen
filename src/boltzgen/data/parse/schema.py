@@ -404,6 +404,8 @@ yaml_keys = [
     "leaving_atoms",
     "atom",
     "use_assembly",
+    "chain_id_mapping",
+    "output_id",
 ]
 
 
@@ -1796,15 +1798,36 @@ class YamlDesignParser:
                 "globally unique output chain ids."
             )
             raise ValueError(msg)
-        if not isinstance(chain_id_mapping, Mapping):
-            msg = (
-                f"'chain_id_mapping' for file with path '{path}' must be a mapping "
-                "from original chain ids (e.g. 'A') to output chain ids (strings)."
-            )
-            raise ValueError(msg)
-        # Normalize keys and values to strings (values become upper-case A-Z)
+
+        # chain_id_mapping is now a list of dicts
+        # each with a single "chain" key containing {"id": ..., "output_id": ...}
         normalized_mapping: dict[str, str] = {}
-        for k, v in chain_id_mapping.items():
+        if not isinstance(chain_id_mapping, list):
+            msg = (
+                f"'chain_id_mapping' for file with path '{path}' must be a list of dicts, "
+                "each with a 'chain' key containing an 'id' and an 'output_id'."
+            )
+            raise TypeError(msg)
+        for entry in chain_id_mapping:
+            if not (
+                isinstance(entry, dict)
+                and "chain" in entry
+                and isinstance(entry["chain"], dict)
+            ):
+                msg = (
+                    f"Each entry in 'chain_id_mapping' for file '{path}' must be a dict with a 'chain' key "
+                    f"containing a dict of 'id' and 'output_id'. Problematic entry: {entry}"
+                )
+                raise ValueError(msg)
+            chain_dict = entry["chain"]
+            if "id" not in chain_dict or "output_id" not in chain_dict:
+                msg = (
+                    f"Each 'chain' dict in 'chain_id_mapping' for file '{path}' must have 'id' and 'output_id'. "
+                    f"Missing in: {chain_dict}"
+                )
+                raise ValueError(msg)
+            k = chain_dict["id"]
+            v = chain_dict["output_id"]
             if v is None or v == "":
                 msg = (
                     f"'chain_id_mapping' for file '{path}' contains an empty "

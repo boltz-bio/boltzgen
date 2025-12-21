@@ -198,6 +198,7 @@ def collate(data: List[Dict[str, Tensor]]) -> Dict[str, Tensor]:
             "structure",
             "tokenized",
             "data_sample_idx",
+            "chain_name",
         ]:
             # Check if all have the same shape
             shape = values[0].shape
@@ -287,7 +288,7 @@ class PredictionDataset(torch.utils.data.Dataset):
 
         # Load record
         record = load_record(pdb_id, self.dataset.record_dir)
-        
+
         # Get the structure
         try:
             if self.inverse_fold:
@@ -583,6 +584,7 @@ class ProteinBinderDataModule(pl.LightningDataModule):
                 "structure_bonds",
                 "extra_mols",
                 "data_sample_idx",
+                "chain_name",
             ]:
                 batch[key] = batch[key].to(device)
         return batch
