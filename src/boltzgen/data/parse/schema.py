@@ -3,11 +3,13 @@ from dataclasses import dataclass
 from dataclasses import replace, astuple
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import urlparse, unquote
 import random
 import re
 from typing import Optional
 from copy import deepcopy
 from tempfile import TemporaryDirectory
+import secrets
 import time
 
 import numpy as np
@@ -46,7 +48,6 @@ from dataclasses import replace
 ####################################################################################################
 # DATACLASSES
 ####################################################################################################
-
 
 @dataclass(frozen=True)
 class ParsedAtom:
@@ -209,8 +210,8 @@ def download_from_url(
         try:
             response = requests.get(url, timeout=60)
             response.raise_for_status()
-            filename = Path(url).name
-            local_path = Path(tmp_dir) / filename
+            filename = Path(unquote(urlparse(url).path)).name
+            local_path = Path(tmp_dir) / f"{secrets.token_hex(8)}_{filename}"
             with local_path.open("wb") as f:
                 f.write(response.content)
             return local_path
