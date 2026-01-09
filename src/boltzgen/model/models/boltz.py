@@ -514,6 +514,7 @@ class Boltz(LightningModule):
         return_z_feats: bool = False,
         step_scale: Optional[float] = None,
         noise_scale: Optional[float] = None,
+        inverse_fold_restriction: Optional[List[str]] = None,
     ) -> Dict[str, Tensor]:
         dict_out = {}
         if self.inference_logging:
@@ -670,12 +671,20 @@ class Boltz(LightningModule):
                             inference_logging=self.inference_logging,
                         )
                     else:
+                        if inverse_fold_restriction is not None:
+                            # Convert from 1 to 3 letter code
+                            inverse_fold_restriction = [
+                                const.prot_letter_to_token[letter]
+                                for letter in inverse_fold_restriction
+                            ]
+
                         struct_out = self.structure_module.sample(
                             s=s,
                             z=z,
                             edge_idx=edge_idx,
                             valid_mask=valid_mask,
                             feats=feats,
+                            restrictions=inverse_fold_restriction,
                         )
 
                     dict_out.update(struct_out)
@@ -1207,7 +1216,11 @@ class Boltz(LightningModule):
             self.refolding_validator.on_epoch_end(model=self)
 
     def predict_step(
-        self, batch: Any, batch_idx: int = 0, dataloader_idx: int = 0
+        self,
+        batch: Any,
+        batch_idx: int = 0,
+        dataloader_idx: int = 0,
+        inverse_fold_restriction: Optional[List[str]] = None,
     ) -> Dict:
         # Skip invalid samples
         if "exception" in batch and any(batch["exception"]):
@@ -1291,6 +1304,7 @@ class Boltz(LightningModule):
                     if "return_z_feats" in self.predict_args
                     else False
                 ),
+                inverse_fold_restriction=inverse_fold_restriction,
             )
             pred_dict = {"exception": False}
             pred_dict.update(feat_masked)

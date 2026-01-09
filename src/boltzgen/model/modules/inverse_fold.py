@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 import torch
 from torch import Tensor, nn
@@ -235,7 +235,7 @@ class InverseFoldingEncoder(nn.Module):
         topk: int = 30,
         num_heads: int = 4,
         enable_input_embedder: bool = False,
-        **kwargs, # old checkpoint compatibility
+        **kwargs,  # old checkpoint compatibility
     ):
         """Initialize the Inverse Folding Encoder."""
         super().__init__()
@@ -443,7 +443,6 @@ class InverseFoldingEncoder(nn.Module):
         return edge_idx, valid_mask, s, z
 
 
-
 class InverseFoldingDecoder(nn.Module):
     def __init__(
         self,
@@ -464,7 +463,7 @@ class InverseFoldingDecoder(nn.Module):
         num_decoder_layers: int = 3,
         inverse_fold_restriction: List[str] = [],
         sampling_temperature: float = 0.1,
-        **kwargs, # old checkpoint compatibility
+        **kwargs,  # old checkpoint compatibility
     ):
         super().__init__()
         self.atom_s = atom_s
@@ -535,7 +534,15 @@ class InverseFoldingDecoder(nn.Module):
         return out_dict
 
     @torch.no_grad()
-    def sample(self, s, z, edge_idx, valid_mask, feats):
+    def sample(
+        self,
+        s,
+        z,
+        edge_idx,
+        valid_mask,
+        feats,
+        restrictions: Optional[List[str]] = None,
+    ):
         """Sample the output from the decoder."""
         num_nodes = s.shape[0]
 
@@ -550,9 +557,12 @@ class InverseFoldingDecoder(nn.Module):
         )
 
         # Create restriction mask that sets the probability of excluded residues to 0
-        if len(self.inverse_fold_restriction) > 0:
+        if restrictions is None:
+            restrictions = self.inverse_fold_restriction
+
+        if len(restrictions) > 0:
             restriction_mask = torch.zeros(len(const.canonical_tokens), device=s.device)
-            for res_type in self.inverse_fold_restriction:
+            for res_type in restrictions:
                 restriction_mask[const.canonical_tokens.index(res_type)] = -self.inf
             restriction_mask = restriction_mask.unsqueeze(0)
         else:
