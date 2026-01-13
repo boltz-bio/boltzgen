@@ -1588,20 +1588,34 @@ class YamlDesignParser:
 
                 if c1 not in all_parsed_chains.keys():
                     msg = f"Chain {c1} in the specified connection does not exist: {constraint}"
-                    ValueError(msg)
+                    raise ValueError(msg)
                 if c2 not in all_parsed_chains.keys():
                     msg = f"Chain {c2} in the specified connection does not exist: {constraint}"
-                    ValueError(msg)
+                    raise ValueError(msg)
 
                 # Map index
                 if all_parsed_chains[c1].sampleidx_to_specidx is not None:
-                    r1 = np.where(all_parsed_chains[c1].sampleidx_to_specidx == r1)[0][
-                        0
-                    ].item()
+                    idx_map = all_parsed_chains[c1].sampleidx_to_specidx
+                    matches = np.where(idx_map == r1)[0]
+                    if len(matches) == 0:
+                        msg = (
+                            f"Residue index {r1} not found in chain {c1}'s "
+                            f"included residues. Available indices: "
+                            f"{idx_map.tolist()}"
+                        )
+                        raise ValueError(msg)
+                    r1 = matches[0].item()
                 if all_parsed_chains[c2].sampleidx_to_specidx is not None:
-                    r2 = np.where(all_parsed_chains[c2].sampleidx_to_specidx == r2)[0][
-                        0
-                    ].item()
+                    idx_map = all_parsed_chains[c2].sampleidx_to_specidx
+                    matches = np.where(idx_map == r2)[0]
+                    if len(matches) == 0:
+                        msg = (
+                            f"Residue index {r2} not found in chain {c2}'s "
+                            f"included residues. Available indices: "
+                            f"{idx_map.tolist()}"
+                        )
+                        raise ValueError(msg)
+                    r2 = matches[0].item()
 
                 c1, r1, a1 = atom_idx_map[(c1, r1, a1)]
                 c2, r2, a2 = atom_idx_map[(c2, r2, a2)]
@@ -1620,9 +1634,16 @@ class YamlDesignParser:
             cidx, ridx, aidx = tuple(leaving_atom["atom"])
             ridx = ridx - 1
             if all_parsed_chains[cidx].sampleidx_to_specidx is not None:
-                ridx = np.where(all_parsed_chains[cidx].sampleidx_to_specidx == ridx)[
-                    0
-                ][0].item()
+                idx_map = all_parsed_chains[cidx].sampleidx_to_specidx
+                matches = np.where(idx_map == ridx)[0]
+                if len(matches) == 0:
+                    msg = (
+                        f"Leaving atom residue index {ridx} not found in "
+                        f"chain {cidx}'s included residues. "
+                        f"Available indices: {idx_map.tolist()}"
+                    )
+                    raise ValueError(msg)
+                ridx = matches[0].item()
             if cidx in total_renaming.keys():
                 cidx = total_renaming[cidx]
             chain = data.chains[np.where(data.chains["name"] == cidx)[0].item()]
