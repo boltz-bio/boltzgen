@@ -1317,7 +1317,7 @@ class YamlDesignParser:
                     for out_id in ids_list:
                         raw_out_id = out_id
                         out_id = str(out_id).upper()
-                        if len(out_id) > 5 or not out_id.isalpha():
+                        if len(out_id) > 5 or not out_id.isalnum():
                             msg = (
                                 f"Output chain id '{raw_out_id}' for non-file entity "
                                 f"(normalized to '{out_id}') is invalid. Output ids "
@@ -1858,7 +1858,7 @@ class YamlDesignParser:
                 raise ValueError(msg)
             norm_k = str(k)
             norm_v = str(v).upper()
-            if len(norm_v) > 5 or not norm_v.isalpha():
+            if len(norm_v) > 5 or not norm_v.isalnum():
                 msg = (
                     f"'chain_id_mapping' for file '{path}' has invalid output id "
                     f"'{v}' (normalized to '{norm_v}'). Output ids must be 1–5 "
