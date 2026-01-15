@@ -1317,7 +1317,7 @@ class YamlDesignParser:
                     for out_id in ids_list:
                         raw_out_id = out_id
                         out_id = str(out_id).upper()
-                        if len(out_id) > 5 or not out_id.isalpha():
+                        if len(out_id) > 5 or not out_id.isalnum():
                             msg = (
                                 f"Output chain id '{raw_out_id}' for non-file entity "
                                 f"(normalized to '{out_id}') is invalid. Output ids "
