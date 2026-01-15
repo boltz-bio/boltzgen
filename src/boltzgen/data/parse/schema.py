@@ -1858,7 +1858,7 @@ class YamlDesignParser:
                 raise ValueError(msg)
             norm_k = str(k)
             norm_v = str(v).upper()
-            if len(norm_v) > 5 or not norm_v.isalpha():
+            if len(norm_v) > 5 or not norm_v.isalnum():
                 msg = (
                     f"'chain_id_mapping' for file '{path}' has invalid output id "
                     f"'{v}' (normalized to '{norm_v}'). Output ids must be 1–5 "
